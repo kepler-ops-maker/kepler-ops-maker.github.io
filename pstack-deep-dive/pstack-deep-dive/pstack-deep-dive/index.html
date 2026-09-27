@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pstack deep research - poteto의 Cursor 스킬 스택 분석</title>
+<style>
+  :root{--bg:#0f1115;--card:#181c24;--line:#262c38;--txt:#e8eaf0;--sub:#9aa3b2;--acc:#6ea8fe;--warn:#ff8080;--ok:#7bd88f}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--txt);font-family:-apple-system,'Pretendard','Noto Sans KR',sans-serif;line-height:1.65;padding:16px;max-width:860px;margin:0 auto}
+  h1{font-size:1.5rem;margin:8px 0 4px}
+  h2{font-size:1.15rem;margin:28px 0 10px;padding-top:14px;border-top:1px solid var(--line)}
+  h3{font-size:1rem;margin:16px 0 6px;color:var(--acc)}
+  p,li{font-size:.92rem;color:var(--txt)}
+  ul,ol{padding-left:20px;margin:6px 0}
+  .meta{color:var(--sub);font-size:.8rem;margin-bottom:8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:10px 0}
+  .card a.t{color:var(--acc);font-weight:700;text-decoration:none;font-size:1rem}
+  .card a.t:hover{text-decoration:underline}
+  .card p{margin-top:6px;color:var(--sub)}
+  code,pre{background:#0a0c10;border:1px solid var(--line);border-radius:6px;font-size:.82rem}
+  code{padding:1px 5px}
+  pre{padding:10px 12px;overflow-x:auto;margin:8px 0;color:#c9d1d9}
+  .flag{color:var(--warn);font-weight:700}
+  .ok{color:var(--ok)}
+  .tbl-wrap{overflow-x:auto;margin:10px 0}
+  table{border-collapse:collapse;width:100%;min-width:720px;font-size:.85rem}
+  th,td{border:1px solid var(--line);padding:8px 10px;vertical-align:top;text-align:left}
+  th{background:#1d2330;color:var(--acc)}
+  td:first-child{font-weight:700;color:var(--sub);white-space:nowrap}
+  .src{font-size:.8rem;color:var(--sub)}
+  .src a{color:var(--acc);word-break:break-all}
+  .badge{display:inline-block;background:#22304a;color:var(--acc);border-radius:6px;padding:0 6px;font-size:.72rem;margin-right:4px}
+</style>
+</head>
+<body>
+<h1>pstack deep research</h1>
+<p class="meta">조사일 2026-09-27 · 웹 검색 14회 + 원문 fetch 12건 · X 원문은 직접 접근이 막혀 threadnavigator/vuink 미러와 인용 보도로 교차 검증함</p>
+
+<div class="card">
+<p><b>한 줄 결론:</b> pstack은 Cursor 엔지니어 Lauren Tan(@poteto, React core team)이 사내에서 쓰던 에이전트 스킬 스택을 오픈소스로 푼 것임. "코드를 더 많이"가 아니라 "더 적게, 더 검증되게"가 목표이고, 진입점 하나(<code>/poteto-mode</code>)만 외우면 됨. 다만 풀 워크플로는 빌드 시간이 약 2배라는 실측 비판도 있어서, 작은 작업엔 과잉임.</p>
+</div>
+
+<h2>1. pstack이 뭔가</h2>
+<div class="card">
+<a class="t" href="https://github.com/cursor/plugins/tree/main/pstack">cursor/plugins - pstack (공식 리포)</a>
+<p>Cursor 공식 플러그인. 워크플로 스킬 23~24개 + 엔지니어링 원칙 21개 + 태스크 플레이북 22개 + 전용 서브에이전트 2개(poteto-agent, Comment Sicko) + 자동화 팩(Benny, dormant)으로 구성됨. MIT 라이선스. SKILL.md 표준 포맷이라 Claude Code/Codex에서도 로드 가능하나 /add-plugin, 모델 역할 배정, /loop 등 일부는 Cursor 전용임.</p>
+</div>
+<div class="card">
+<a class="t" href="https://cursor.com/marketplace/cursor/pstack">Cursor 마켓플레이스 - pstack</a>
+<p>설치는 Cursor 채팅에서 <code>/add-plugin pstack</code> 한 줄임. 부모 리포 cursor/plugins는 스타 약 6.6천 개(2026-09 기준, 서드파티 집계).</p>
+</div>
+<div class="card">
+<a class="t" href="https://x.com/poteto">제작자: Lauren Tan (@poteto)</a>
+<p>Meta, Netflix, Cursor에서 수백만 줄 규모 코드베이스를 다뤘고 React core team에서 React Compiler를 만듦. 최근엔 Grok @Bot 코드베이스의 "gardener"로 pstack을 전면 적용했다고 본인 가이드에서 밝힘.</p>
+</div>
+
+<h2>2. 왜 유행인가 (배경)</h2>
+<ul>
+<li><b>사내 검증 후 공개:</b> 2026-05-27 본인이 "내 Cursor 스킬이 지난주 사내 엔지니어링 팀에서 1만 회 사용됐다"며 오픈소스화를 발표함(LinkedIn). 내부 실전 스택이라는 내러티브가 초기 확산의 핵심이었음. <span class="flag">제작자 주장 수치임.</span></li>
+<li><b>"AI slop" 반감의 시기:</b> README 스스로 "AI가 슬롭 코드를 너무 많이 쓴다"는 공감대에서 출발함. 스루풋보다 검증을 앞세우는 포지셔닝이 시니어 개발자층에 먹힘.</li>
+<li><b>제작자 신뢰도:</b> React core team 이력 + "pstack으로 월 2,000 PR을 프로덕션에 냈다"는 본인 가이드 주장. <span class="flag">역시 제작자 주장이며 독립 검증 없음.</span></li>
+<li><b>인플루언서 리뷰 연쇄:</b> Theo(t3.gg)가 2026-08-19 일주일 실사용 리뷰에서 Matt Pocock 스킬과 비교하며 "자기 워크플로엔 pstack이 arguably better" 평가. Flavio Copes 딥다이브(08-21), Rob Shocks 리뷰(09-08)가 이어짐.</li>
+<li><b>본인 콘텐츠 연재:</b> "Complete Guide to pstack" X 아티클 시리즈(Pt.1 09-01 검증, Pt.2 계획/설계)로 화제성 유지.</li>
+<li><b>skills 포맷의 대세화:</b> SKILL.md가 Claude Code, Codex 등에서 공통 포맷이 되면서 "마크다운 스킬 컬렉션" 자체가 2026년 하반기 유행 카테고리임(Matt Pocock 스킬, Superpowers, addyosmani/agent-skills 등).</li>
+<li><b>포트 생태계:</b> pstack-claude(비공식 Claude Code/Codex/OpenCode 포트) 같은 미러가 나오면서 Cursor 외 사용자에게도 퍼짐.</li>
+</ul>
+
+<h2>3. 작동 방식과 구체적 사용법</h2>
+<h3>설치와 설정</h3>
+<pre>/add-plugin pstack      # Cursor 채팅에서 설치
+/setup-pstack           # 역할별 모델 감지·배정 (~/.cursor/rules/pstack-models.mdc 생성)
+/poteto-mode &lt;목표 + 완료 조건&gt;   # 이후엔 이것만 쓰면 됨</pre>
+<p>기본 모델 배정: 판단·문장·정밀 지정 코드는 Fable 5.1, 빠른 기계적 코드는 Grok, 리뷰 패널은 Fable/Sol/Grok/Opus 혼합. <code>/setup-pstack</code>으로 역할별 변경 가능(<code>auto</code>/<code>inherit-parent</code>는 부모 채팅 모델 상속이라는 뜻이며 모델명이 아님).</p>
+<h3>프롬프트 작성법 (가이드 핵심)</h3>
+<pre>/poteto-mode export가 재시도 중간에 중복 행을 씀. 먼저 재현하고, 수정하고, 검증해.
+/poteto-mode 자고 올게. CI가 flake해도 스택을 머지까지 완료해. 아침까지.</pre>
+<ul>
+<li>스킬 이름을 나열하지 말고 <b>목표 + 검증 가능한 완료 조건 + 유지해야 할 기존 동작</b>만 적음. 라우팅은 /poteto-mode가 함.</li>
+<li>실행 시: 원칙 인덱스 읽기 → 매칭된 플레이북의 단계를 투두에 <b>그대로 verbatim 복사</b> → 단계별로 필요한 스킬(/how, /architect, /tdd, /interrogate 등) 호출 → 실물 검증. 스킵한 단계는 "skip: 사유"로 남김(조용한 생략 금지).</li>
+<li>sticky mode라 한번 들어가면 후속 턴에도 유지됨. 주제 바꿀 땐 "new task"라고 말함. Cursor <code>/loop</code>과 결합해 야간 자율 실행 가능.</li>
+</ul>
+<h3>주요 스킬 직접 호출</h3>
+<ul>
+<li><code>/how</code> 서브시스템 동작 추적 설명 / <code>/why</code> git·이슈·Slack·Sentry·분석 등 7개 증거 카테고리에서 "왜 이렇게 됐나" 조사 / <code>/teach</code> 두 개를 합쳐 이해시켜줌 / <code>/recall</code> 과거 채팅 기록에서 내 컨텍스트 복원</li>
+<li><code>/architect</code> 호출부 사용 예부터 타입·시그니처 설계(구현 중 마찰 증거가 나오면 설계 폐기) / <code>/arena</code> 같은 브리프를 여러 모델이 경쟁 구현 후 최선을 graft / <code>/swarm</code> 슬라이스 분할 병렬 + 통합 리포트 / <code>/interrogate</code> 여러 모델이 diff를 교차 공격(기각한 항목과 사유도 공개)</li>
+<li><code>/create-verification-skill</code> 레포에 "검증 능력"을 스킬로 생성(실행→구동→증거 캡처→정리 + feature map) / <code>/maintain-verification-skill</code> 드리프트 감지 / <code>/tdd</code> / <code>/unslop</code> AI 문체 제거 / <code>/bro</code> 직역 해설 / <code>/show-me-your-work</code> TSV 결정 로그 / <code>/automate-me</code> 내 작업 방식으로 나만의 -mode 스킬 생성</li>
+</ul>
+<h3>Cursor 없이 쓰기</h3>
+<p>SKILL.md 파일이라 Claude Code/Codex에 폴더 복사로 로드 가능. 비공식 포트 <a href="https://github.com/michael-denyer/pstack-claude" style="color:var(--acc)">michael-denyer/pstack-claude</a>가 Cursor 전용 요소를 변환해 제공함. 단 /add-plugin, /setup-pstack의 모델 규칙 파일, 서브에이전트별 모델 지정, /loop은 Cursor 전용이라 빠짐.</p>
+
+<h2>4. 비교표: pstack vs Matt Pocock 스킬 vs vanilla 프롬프팅</h2>
+<div class="tbl-wrap"><table>
+<tr><th>축</th><th>pstack (poteto)</th><th>mattpocock/skills</th><th>vanilla 프롬프팅</th></tr>
+<tr><td>한 줄 철학</td><td>"깊이 먼저": 검증 가능한 엔지니어링 워크플로를 스킬로 실행</td><td>"정렬 먼저": grilling으로 요구사항 오정렬을 막고, 작고 조합 가능한 스킬</td><td>사람이 라우터·검증자·리뷰어를 전부 겸함</td></tr>
+<tr><td>규모·구조</td><td>스킬 23~24 + 원칙 21 + 플레이북 22 + 서브에이전트 2 + 자동화 팩. /poteto-mode가 라우터 겸 sticky mode</td><td>엔지니어링·프로덕티비티 스킬 약 20개. user-invoked(직접 호출) / model-invoked(자동 로드) 2축 분리, ask-matt가 안내</td><td>없음</td></tr>
+<tr><td>설치</td><td>Cursor <code>/add-plugin pstack</code> (타 도구는 파일 복사/비공식 포트)</td><td>Claude Code 공식 마켓플레이스 플러그인 또는 <code>npx skills add mattpocock/skills</code> (수정 가능한 파일로 설치)</td><td>-</td></tr>
+<tr><td>계획(플래닝)</td><td>계획 스킬이 일부러 없음("best spec is code"). 프로토타입·/architect로 코드로 계획함</td><td>grill-me/grill-with-docs → to-spec → to-tickets → implement의 스펙·티켓 파이프라인이 중심</td><td>사람 머리</td></tr>
+<tr><td>검증</td><td>1급 시민: /create-verification-skill로 레포 단위 검증 능력 생성, prove-it-works 원칙(빌드 통과는 증거 아님)</td><td>TDD red-green 루프, /diagnosing-bugs 단계 게이트, /code-review(기준·스펙 2축 병렬 리뷰)</td><td>사람이 실행·확인</td></tr>
+<tr><td>병렬·오케스트레이션</td><td>arena(경쟁 구현+graft), swarm(슬라이스 병렬), orchestrate/autopilot(수일 프로그램), 워크트리 격리</td><td>기본적으로 단일 에이전트 순차 흐름 중심(스킬 내부 병렬 리뷰 정도)</td><td>수동</td></tr>
+<tr><td>모델 전략</td><td>역할별 모델 라우팅이 내장(/setup-pstack). 멀티모델 리뷰 패널·교차 심사가 기본 설계</td><td>모델 무관 설계. "any model에서 작동"을 명시, 모델 라우팅 없음</td><td>단일 모델</td></tr>
+<tr><td>문체·글쓰기</td><td>/unslop(AI 티 제거), /technical-writing(Diátaxis 등), /bro</td><td>/writing-for-agents, /wait-what, CONTEXT.md 공유 언어</td><td>모델 기본 문체</td></tr>
+<tr><td>비용·속도</td><td>무거움: 같은 빌드에 시간 약 2배(1시간 vs 30분) 실측, arena 한 번에 수백 달러 추정 <span class="flag">리뷰어 1~2인 실측/추정치</span></td><td>가벼움: 마크다운만, 필요한 것만 골라 설치</td><td>가장 쌈</td></tr>
+<tr><td>적합한 상황</td><td>기존 코드베이스, 어려운 버그, 대규모 마이그레이션, 야간 자율 실행</td><td>새 작업 정렬, 티켓 기반 개발, 1인 개발의 일상 루프</td><td>사소한 수정, 일회성 질문</td></tr>
+<tr><td>검증된 인기 지표</td><td>cursor/plugins 스타 약 6.6천(2026-09) <span class="ok">서드파티 집계 일치</span>; 사내 주 1만 회 사용 <span class="flag">제작자 주장</span></td><td>스타 약 5.4만(andrew.ooo, 2026-09) <span class="flag">Theo/일부 보도의 "20만+"와 상충, 실제 수치 불확실</span></td><td>-</td></tr>
+</table></div>
+
+<h2>5. pstack의 차별점 (Matt Pocock 스킬 대비)</h2>
+<ol>
+<li><b>라우터 + sticky mode:</b> /poteto-mode 하나가 플레이북을 골라 단계를 복사하고 스킬을 순서대로 호출함. Pocock 쪽은 사용자가 스킬을 직접 고르는 철학(disable-model-invocation 다수)임.</li>
+<li><b>멀티모델이 설계의 일부:</b> arena의 경쟁 구현, interrogate의 교차 심사, 역할별 모델 배정이 기본값. Pocock 스킬은 모델 중립이라 이런 구조가 없음.</li>
+<li><b>검증을 레포의 능력으로 만듦:</b> /create-verification-skill이 실제 앱을 구동하는 CLI+feature map을 생성. Pocock의 TDD/디버깅 루프보다 한 단계 위의 인프라 접근임.</li>
+<li><b>장기 자율 실행:</b> autonomous-run, orchestrate, autopilot-full/stack, session-pickup, pause-safely, TSV 결정 로그 등 "자고 있는 동안" 워크플로가 완비됨. Pocock 쪽은 handoff 정도.</li>
+<li><b>조사 스킬의 깊이:</b> /why가 Slack·Sentry·이슈·분석창고까지 MCP로 훑어 "왜"를 증거로 재구성함. Theo가 "훔쳐가고 싶다"고 꼽은 부분.</li>
+<li><b>철학의 반대 지점:</b> pstack은 계획 문서를 불신(코드로 계획), Pocock은 grilling+스펙+티켓이 중심. 어느 쪽이 맞는지는 작업 성격에 따라 갈림.</li>
+</ol>
+
+<h2>6. 비판·단점·주의점</h2>
+<ul>
+<li><b>오버킬 논란:</b> Rob Shocks 실측에서 같은 빌드가 풀 스택 적용 시 약 2배 소요(1시간 vs 30분). "작은 UI 수정엔 토큰·시간 낭비"라는 결론. Theo도 arena 한 번에 수백 달러의 추론 비용이 들 수 있다고 지적.</li>
+<li><b>기존 코드베이스 전제:</b> 계획 스킬이 의도적으로 없어서 그린필드 신규 프로젝트엔 안 맞음(리뷰어 공통 지적).</li>
+<li><b>Cursor 종속 요소:</b> 모델 역할 배정, /loop, /add-plugin 등 최상의 경험은 Cursor에서만. 포트는 비공식.</li>
+<li><b>제작자 수치는 자기 보고:</b> "주 1만 회 사용", "월 2,000 PR"은 본인 발표이며 독립 검증 없음.</li>
+<li><b>마찰 포인트:</b> /deslop, control-cli/control-ui는 별도 플러그인(cursor-team-kit), 고급 shipping 플레이북은 GitHub/Graphite 전제.</li>
+</ul>
+
+<h2>7. 첫 사용 추천 경로</h2>
+<ol>
+<li><code>/add-plugin pstack</code> → <code>/setup-pstack</code> → 새 채팅 시작</li>
+<li>실제 버그 하나에 <code>/poteto-mode &lt;증상&gt;. 먼저 재현하고, 수정하고, 검증해.</code></li>
+<li>투두에 원칙 읽기 → 플레이북 복사 → 스킬 호출이 보이는지 관찰</li>
+<li><code>/how</code>, <code>/why</code>, <code>/interrogate</code>를 직접 써봄</li>
+<li>익숙해지면 <code>/create-verification-skill</code>로 레포에 검증 능력을 심고, 야간 실행은 완료 조건이 있는 프롬프트 + <code>/loop</code>로</li>
+</ol>
+
+<h2>8. 출처 (방문·검증한 소스 전체)</h2>
+<div class="src"><ol>
+<li><a href="https://github.com/cursor/plugins/tree/main/pstack">github.com/cursor/plugins/tree/main/pstack</a> — 공식 리포</li>
+<li><a href="https://raw.githubusercontent.com/cursor/plugins/main/pstack/README.md">pstack README 원문</a> — 설치, 플레이북 22, 원칙 21, 스킬 목록</li>
+<li><a href="https://github.com/cursor/plugins/blob/main/pstack/skills/poteto-mode/SKILL.md">poteto-mode SKILL.md</a> — 라우터 규칙, 모델 기본값</li>
+<li><a href="https://github.com/cursor/plugins/blob/main/pstack/docs/guide/README.md">공식 pstack 가이드</a> — 프롬프트 작성법, 흔한 실수</li>
+<li><a href="https://cursor.com/marketplace/cursor/pstack">Cursor 마켓플레이스 pstack</a> — 공식 플러그인 페이지</li>
+<li><a href="https://threadnavigator.com/thread/2094457600259842065/">@poteto "Complete Guide to pstack Pt.1"</a> — X 원문 미러(직접 접근 불가로 대체)</li>
+<li><a href="https://threadnavigator.com/thread/2097732320606507506/">@poteto "Complete Guide to pstack Pt.2"</a> — X 원문 미러</li>
+<li><a href="https://vuink.com/post/k-d-dpbz/poteto/status/2097732320606507506">vuink 미러(Pt.2 교차 확인)</a></li>
+<li><a href="https://flaviocopes.com/pstack/">Flavio Copes, "A deep dive into pstack" (2026-08-21)</a></li>
+<li><a href="https://moderncreator.app/2026-08-19-theo-t3-gg-so-i-tried-matt-pocock-s-ai-agent-skills">Theo(t3.gg) 스킬 리뷰 전문 요약 (2026-08-19)</a> — Pocock vs pstack 직접 비교</li>
+<li><a href="https://moderncreator.app/2026-09-08-rob-shocks-pstack-is-agent-overkill-use-it-anyway">Rob Shocks, "Pstack Is Agent Overkill. Use It Anyway!" (2026-09-08)</a> — 시간 2배 실측</li>
+<li><a href="https://github.com/mattpocock/skills">github.com/mattpocock/skills README 원문</a> — 철학, 스킬 목록, 설치법</li>
+<li><a href="https://www.skills.sh/mattpocock/skills">skills.sh의 mattpocock/skills 페이지</a></li>
+<li><a href="https://andrew.ooo/posts/matt-pocock-skills-claude-code-review/">andrew.ooo, Matt Pocock 스킬 리뷰</a> — 스타 약 5.4만 주장</li>
+<li><a href="https://www.reddit.com/r/AIAgentsInAction/comments/1to9ke8/pstacks_potetomode_explained_cursors_depthfirst/">Reddit r/AIAgentsInAction pstack 설명 스레드</a></li>
+<li><a href="https://theclarity.today/story/pstack-explained-lauren-tan-s-system-for-trustworthy-ai-agents-36efac25">theclarity.today 분석</a> — 검증 스킬 게이트 지적</li>
+<li><a href="https://www.linkedin.com/feed/update/urn:li:activity:7465439429042737152">Lauren Tan LinkedIn (2026-05-27)</a> — "주 1만 회 사용, 오픈소스화" 발표</li>
+<li><a href="https://www.claudepluginhub.com/plugins/cursor-pstack-upstream-pstack">claudepluginhub 집계</a> — cursor/plugins 스타/포크 수치</li>
+<li><a href="https://github.com/michael-denyer/pstack-claude">michael-denyer/pstack-claude</a> — 비공식 Claude Code/Codex 포트</li>
+<li><a href="https://github.com/addyosmani/agent-skills/blob/main/docs/comparison.md">addyosmani/agent-skills 비교 문서</a> — 스킬 컬렉션 지형</li>
+</ol></div>
+
+<h3>제외하거나 표시한 정보와 사유</h3>
+<ul class="src">
+<li><span class="flag">mattpocock/skills 스타 수:</span> 소스마다 5.4만(andrew.ooo)과 20만~21.5만(Theo 리뷰 요약, daily.dev)이 상충함. 표에 양쪽 다 적고 불확실 표시.</li>
+<li><span class="flag">"사내 주 1만 회 사용", "월 2,000 PR", "출시 주 9,000회":</span> 제작자 본인 발표(LinkedIn/X/인터뷰 인용)라 독립 검증 불가. 플래그 처리.</li>
+<li><span class="flag">스킬 총수(23 vs 24), 플레이북 수(22 vs 23):</span> 버전(0.15.0 시점 집계 등)에 따라 소스마다 다름. 범위로 표기.</li>
+<li>x.com 원문 2건은 봇 차단으로 직접 fetch 불가 → threadnavigator/vuink 미러 + 인용 보도로 교차 검증함.</li>
+<li>광고·스폰서 세그먼트(OpenRouter, Depot 등)와 코스 홍보성 내용은 근거에서 배제함.</li>
+<li>blog.katanaquant.com의 "orchestrator slop" 비판은 pstack이 아닌 gstack에 대한 글이라 제외함.</li>
+</ul>
+<p class="meta" style="margin-top:24px">조사: 웹 검색 14회(공식 문서·제작자 글·리뷰·비판·포트·집계 각도), 원문 fetch 12건. 불확실 셀은 <span class="flag">빨간색</span>으로 표시함.</p>
+</body>
+</html>
