@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proof Random — Verifiable public randomness, free relay + x402 testnet</title>
+<meta name="description" content="Proof Random turns the public drand quicknet beacon into reproducible, nonce-bound random integers. Free relay plus a Base Sepolia x402 paid endpoint with pinned-key BLS verification.">
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--line:#2d333b;--text:#e6edf3;--dim:#9da7b3;--accent:#58a6ff;--good:#3fb950;--warn:#d29922;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:820px;margin:0 auto;padding:0 18px 64px}
+header{padding:56px 0 24px;border-bottom:1px solid var(--line);margin-bottom:32px}
+h1{font-size:1.9rem;line-height:1.2;margin:0 0 12px}
+h2{font-size:1.25rem;margin:40px 0 12px;padding-top:8px}
+h3{font-size:1rem;margin:24px 0 8px}
+p{margin:10px 0;color:var(--dim)}
+p.lede{font-size:1.1rem;color:var(--text);max-width:38em}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.badge{font:500 .8rem/1 var(--mono);padding:7px 11px;border:1px solid var(--line);border-radius:999px;color:var(--dim)}
+.badge b{color:var(--good);font-weight:600}
+.badge.t b{color:var(--warn)}
+code,pre{font-family:var(--mono);font-size:.86rem}
+code{background:#1c2128;padding:2px 6px;border-radius:5px;color:#79c0ff;word-break:break-all}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;overflow-x:auto;color:#c9d1d9}
+pre code{background:none;padding:0;color:inherit}
+a{color:var(--accent)}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:.92rem}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--dim);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+td code{font-size:.82rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;margin:16px 0}
+.demo-row{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.demo-row label{display:flex;flex-direction:column;font-size:.75rem;color:var(--dim);gap:4px;text-transform:uppercase;letter-spacing:.05em}
+input{background:#0d1117;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:10px 12px;font:1rem var(--mono);min-width:0}
+#nonce{flex:1;width:100%}
+#max{width:110px}
+button{background:var(--accent);border:0;border-radius:8px;color:#06101f;font-weight:700;font-size:1rem;padding:12px 22px;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}
+.result{margin-top:16px;display:none}
+.result .value{font:700 3.2rem/1 var(--mono);color:var(--good)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;margin-top:12px;font-size:.84rem}
+.kv dt{color:var(--dim);font-family:var(--mono)}
+.kv dd{margin:0;font-family:var(--mono);word-break:break-all}
+.note{border-left:3px solid var(--warn);padding:8px 14px;background:#1c1a12;border-radius:0 8px 8px 0;color:var(--dim);font-size:.9rem;margin:14px 0}
+.note b{color:var(--warn)}
+.ok{border-left-color:var(--good);background:#12211a}.ok b{color:var(--good)}
+footer{border-top:1px solid var(--line);margin-top:48px;padding-top:20px;color:var(--dim);font-size:.85rem}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps li{counter-increment:s;position:relative;padding:0 0 14px 34px;color:var(--dim)}
+.steps li::before{content:counter(s);position:absolute;left:0;top:2px;width:22px;height:22px;border-radius:50%;background:#1c2128;border:1px solid var(--line);color:var(--accent);font:700 .75rem/22px var(--mono);text-align:center}
+.steps li b{color:var(--text)}
+@media(max-width:560px){h1{font-size:1.55rem}.result .value{font-size:2.6rem}th:nth-child(3),td:nth-child(3){display:none}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>Proof Random</h1>
+<p class="lede">Public randomness with a trail to check. Proof Random relays the <a href="https://drand.love">drand</a> quicknet beacon and derives reproducible, nonce-bound integers from it — served free, or metered per-call over <a href="https://www.x402.org">x402</a> on Base Sepolia.</p>
+<div class="badges">
+<span class="badge"><b>●</b>&nbsp;Free relay — no billing</span>
+<span class="badge t"><b>●</b>&nbsp;x402 testnet — Base Sepolia</span>
+<span class="badge">drand quicknet</span>
+<span class="badge">BLS-pinned verification</span>
+</div>
+</header>
+
+<section id="demo">
+<h2>Live demo</h2>
+<p>Draw a number from the latest public beacon. Your browser fetches the beacon straight from drand and runs the relay's exact derivation locally: <code>SHA-256(chainHash:round:randomness:nonce:counter)</code>, first 4 bytes big-endian, rejection-sampled into <code>[0, max)</code>. Same round + same nonce always gives the same number.</p>
+<div class="card">
+<div class="demo-row">
+<label style="flex:1">Nonce<input id="nonce" maxlength="128" value="my-first-draw"></label>
+<label>Max<input id="max" type="number" min="1" max="65536" value="6"></label>
+</div>
+<button id="draw">Draw from latest beacon</button>
+<div class="result" id="result">
+<div class="value" id="r-value">–</div>
+<dl class="kv">
+<dt>round</dt><dd id="r-round"></dd>
+<dt>nonce</dt><dd id="r-nonce"></dd>
+<dt>counter</dt><dd id="r-counter"></dd>
+<dt>randomness</dt><dd id="r-randomness"></dd>
+<dt>signature</dt><dd id="r-signature"></dd>
+<dt>digest</dt><dd id="r-digest"></dd>
+</dl>
+</div>
+<p id="demo-status" style="font-size:.85rem"></p>
+</div>
+<div class="note"><b>Predictable after publication.</b> The latest beacon is already public, so a drawn value is reproducible by anyone — never a fair coin toss for adversarial decisions, money, or prizes.</div>
+</section>
+
+<section id="deployments">
+<h2>Two deployments</h2>
+<table>
+<tr><th></th><th>Free relay</th><th>x402 testnet</th></tr>
+<tr><td>Base URL</td><td><code>proof-random-api.pn-26f.workers.dev</code></td><td><code>proof-random-x402-sepolia.pn-26f.workers.dev</code></td></tr>
+<tr><td>Price</td><td>Free, no x402 charges</td><td>0.001 test USDC per call (x402 v2)</td></tr>
+<tr><td>Beacon check</td><td>Signature digest only (<code>blsVerified: false</code>)</td><td>Full BLS verify against the pinned quicknet key, before any payment challenge (<code>blsVerified: true</code>)</td></tr>
+<tr><td>Output</td><td>Integer in <code>[0, max)</code>, default max 6</td><td>Integer 0–5, nonce-bound</td></tr>
+<tr><td>Status</td><td>Live</td><td>Live challenge flow; a settled end-to-end payment has not been tested yet</td></tr>
+</table>
+</section>
+
+<section id="api">
+<h2>API</h2>
+<h3>GET /v1/random</h3>
+<table>
+<tr><th>Parameter</th><th>In</th><th>Rules</th></tr>
+<tr><td><code>nonce</code></td><td>query</td><td>Required. 1–128 printable ASCII characters. Binds the deterministic sample to your request; it does not commit the server to a future round.</td></tr>
+<tr><td><code>max</code></td><td>query</td><td>Optional. Integer 1–65536, default 6. Result is uniform in <code>[0, max)</code>.</td></tr>
+</table>
+<h3>Response 200</h3>
+<pre><code>{
+  "value": 1,
+  "range": [0, 6],
+  "nonce": "my-first-draw",
+  "chainHash": "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971",
+  "round": 32556065,
+  "randomness": "fa686138…e05f8d7e",
+  "signature": "b0fd32f6…b544e04a",
+  "signatureDigestMatches": true,
+  "blsVerified": false,
+  "counter": 0,
+  "algorithm": "SHA-256(chainHash:round:randomness:nonce:counter), uint32be, rejection sample",
+  "x402": false
+}</code></pre>
+<table>
+<tr><th>Field</th><th>Meaning</th></tr>
+<tr><td><code>value</code></td><td>The derived integer, reproducible from the fields below.</td></tr>
+<tr><td><code>round</code> / <code>randomness</code> / <code>signature</code></td><td>The drand quicknet beacon entry the draw came from — check it against any drand client or <code>api.drand.sh</code>.</td></tr>
+<tr><td><code>signatureDigestMatches</code></td><td>The relay hashed the beacon and its digest agrees with the served randomness.</td></tr>
+<tr><td><code>blsVerified</code></td><td><code>false</code> on the free relay (digest only); <code>true</code> on the x402 endpoint, which verifies the BLS signature against the pinned quicknet key before charging.</td></tr>
+<tr><td><code>counter</code></td><td>Rejection-sampling iterations. Almost always 0; included so the derivation is exact.</td></tr>
+</table>
+<p>Errors: <code>400</code> invalid nonce or max · <code>402</code> payment challenge (x402 endpoint) · <code>503</code> beacon unavailable, stale, or failed verification.</p>
+</section>
+
+<section id="x402">
+<h2>Paying per call with x402</h2>
+<p>The testnet endpoint speaks <a href="https://www.x402.org">x402 v2</a>: the HTTP-native payment protocol. No API keys, no accounts — the payment is the credential.</p>
+<ol class="steps">
+<li><b>Call the endpoint.</b> A valid request without payment returns <code>402</code> with a base64 <code>PAYMENT-REQUIRED</code> header. Freshness and BLS verification run before the challenge, so a 402 means the beacon itself checked out.</li>
+<li><b>Read the terms.</b> Decoded, the header asks for an exact payment of <code>1000</code> base units (0.001) of USDC (<code>0x036CbD53842c5426634e7929541eC2318f3dCF7e</code>) on <code>eip155:84532</code> (Base Sepolia), to the service wallet, valid for 300 seconds.</li>
+<li><b>Sign and retry.</b> An x402 client signs the authorization and retries with the payment payload; the service settles on-chain and returns the verified sample — <code>blsVerified: true</code>, <code>verifiedChainHash</code> pinned to quicknet.</li>
+</ol>
+<div class="note"><b>Testnet honesty.</b> This is a Base Sepolia experiment with test USDC. The challenge flow is live; a fully settled paid response has not been tested end-to-end. Past beacons are public and predictable — never use this for wagers.</div>
+</section>
+
+<section id="code">
+<h2>Code</h2>
+<h3>Free relay — curl</h3>
+<pre><code>curl "https://proof-random-api.pn-26f.workers.dev/v1/random?nonce=order-1042&amp;max=100"</code></pre>
+<h3>Free relay — JavaScript</h3>
+<pre><code>const r = await fetch(
+  "https://proof-random-api.pn-26f.workers.dev/v1/random?nonce=order-1042&max=100"
+);
+const { value, round, randomness, signature } = await r.json();</code></pre>
+<h3>x402 testnet — Python (raw challenge)</h3>
+<pre><code>import base64, requests
+
+url = "https://proof-random-x402-sepolia.pn-26f.workers.dev/v1/random"
+r = requests.get(url, params={"nonce": "run-17"})
+assert r.status_code == 402
+terms = json.loads(base64.b64decode(r.headers["PAYMENT-REQUIRED"]))
+# terms["accepts"][0]: scheme=exact, network=eip155:84532,
+# amount="1000", asset=Base Sepolia USDC
+# -> sign with any x402 v2 client and retry with the payment payload</code></pre>
+</section>
+
+<section id="verify">
+<h2>Verify it yourself</h2>
+<p>Every draw cites its source: the drand quicknet chain <code>52db9ba7…c84e971</code>. Pull the same round from <a href="https://api.drand.sh">api.drand.sh</a>, recompute the digest and the derivation, and confirm the value — the demo above does exactly this in your browser. For production decisions, verify the BLS signature with an official drand client; the free relay checks a digest, not the signature.</p>
+</section>
+
+<footer>
+<p>Proof Random · <a href="https://proof-random-api.pn-26f.workers.dev/openapi.json">OpenAPI (free)</a> · <a href="https://proof-random-x402-sepolia.pn-26f.workers.dev/openapi.json">OpenAPI (x402)</a> · <a href="https://proof-random-api.pn-26f.workers.dev/llms.txt">llms.txt</a> · <a href="https://drand.love">drand</a></p>
+</footer>
+</main>
+<script>
+const CHAIN = "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971";
+const hex = b => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+async function sha256(s){ return crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); }
+document.getElementById("draw").addEventListener("click", async () => {
+  const btn = document.getElementById("draw"), st = document.getElementById("demo-status");
+  const nonce = document.getElementById("nonce").value.trim();
+  const max = parseInt(document.getElementById("max").value, 10);
+  if (!nonce || nonce.length > 128 || !/^[\x20-\x7E]+$/.test(nonce)) { st.textContent = "Nonce: 1-128 printable ASCII characters."; return; }
+  if (!(max >= 1 && max <= 65536)) { st.textContent = "Max: integer 1-65536."; return; }
+  btn.disabled = true; st.textContent = "Fetching latest beacon from api.drand.sh…";
+  try {
+    const r = await fetch("https://api.drand.sh/" + CHAIN + "/public/latest");
+    if (!r.ok) throw new Error("drand HTTP " + r.status);
+    const b = await r.json();
+    const limit = Math.floor(4294967296 / max) * max;
+    let counter = 0, digest, u;
+    do {
+      digest = await sha256(CHAIN + ":" + b.round + ":" + b.randomness + ":" + nonce + ":" + counter);
+      u = new DataView(digest).getUint32(0);
+      if (u < limit) break;
+      counter++;
+    } while (counter < 1000);
+    document.getElementById("r-value").textContent = u % max;
+    document.getElementById("r-round").textContent = b.round;
+    document.getElementById("r-nonce").textContent = nonce;
+    document.getElementById("r-counter").textContent = counter;
+    document.getElementById("r-randomness").textContent = b.randomness;
+    document.getElementById("r-signature").textContent = b.signature;
+    document.getElementById("r-digest").textContent = hex(digest);
+    document.getElementById("result").style.display = "block";
+    st.innerHTML = 'Derived locally from drand round ' + b.round + '. Compare: <a target="_blank" rel="noopener" href="https://proof-random-api.pn-26f.workers.dev/v1/random?nonce=' + encodeURIComponent(nonce) + '&max=' + max + '">same call on the free relay</a> (uses its own latest round — values match when the round matches).';
+  } catch (e) {
+    st.textContent = "Beacon fetch failed: " + e.message;
+  } finally { btn.disabled = false; }
+});
+</script>
+</body>
+</html>
