@@ -99,7 +99,7 @@ footer{border-top:1px solid var(--line);margin-top:48px;padding-top:20px;color:v
 <tr><td>Price</td><td>Free, no x402 charges</td><td>0.001 test USDC per call (x402 v2)</td></tr>
 <tr><td>Beacon check</td><td>Signature digest only (<code>blsVerified: false</code>)</td><td>Full BLS verify against the pinned quicknet key, before any payment challenge (<code>blsVerified: true</code>)</td></tr>
 <tr><td>Output</td><td>Integer in <code>[0, max)</code>, default max 6</td><td>Integer 0–5, nonce-bound</td></tr>
-<tr><td>Status</td><td>Live</td><td>Live challenge flow; a settled end-to-end payment has not been tested yet</td></tr>
+<tr><td>Status</td><td>Live</td><td>One 0.001 test-USDC call settled on Base Sepolia and returned HTTP 200 on Sep 27, 2026; testnet only, not production or external adoption.</td></tr>
 </table>
 </section>
 
@@ -145,7 +145,7 @@ footer{border-top:1px solid var(--line);margin-top:48px;padding-top:20px;color:v
 <li><b>Read the terms.</b> Decoded, the header asks for an exact payment of <code>1000</code> base units (0.001) of USDC (<code>0x036CbD53842c5426634e7929541eC2318f3dCF7e</code>) on <code>eip155:84532</code> (Base Sepolia), to the service wallet, valid for 300 seconds.</li>
 <li><b>Sign and retry.</b> An x402 client signs the authorization and retries with the payment payload; the service settles on-chain and returns the verified sample — <code>blsVerified: true</code>, <code>verifiedChainHash</code> pinned to quicknet.</li>
 </ol>
-<div class="note"><b>Testnet honesty.</b> This is a Base Sepolia experiment with test USDC. The challenge flow is live; a fully settled paid response has not been tested end-to-end. Past beacons are public and predictable — never use this for wagers.</div>
+<div class="note"><b>Testnet honesty.</b> This is a Base Sepolia experiment with test USDC. One internal 0.001 test-USDC payment settled on Base Sepolia (tx 0xe1fc3dd854e98b7109b9c5e9f9425d65462290cccf4ab6f986991d0e93d3474a) and returned HTTP 200; see https://proof-random-x402-sepolia.pn-26f.workers.dev/settlement-proof.json . No mainnet payment, revenue, independent customer use or reliability claim. Past beacons are public and predictable; never use for wagers.</div>
 </section>
 
 <section id="code">
