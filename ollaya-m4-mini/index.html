@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ollaya를 Mac mini M4 기본형(16GB)에서 서빙하기 — 실용성 분석</title>
+<style>
+  :root { --bg:#0f1115; --card:#1a1d24; --line:#2a2e38; --txt:#e8eaf0; --dim:#9aa1b0; --ok:#34c77b; --warn:#f5b942; --bad:#f26d6d; --est:#7a5c1e; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font-family:-apple-system,'Pretendard','Apple SD Gothic Neo',sans-serif; line-height:1.6; padding:16px; }
+  .wrap { max-width:860px; margin:0 auto; }
+  h1 { font-size:1.35rem; line-height:1.4; margin:12px 0 4px; }
+  h2 { font-size:1.1rem; margin:28px 0 10px; padding-top:8px; border-top:1px solid var(--line); }
+  .date { color:var(--dim); font-size:.85rem; }
+  .lead { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-top:14px; font-size:.95rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:10px 0; font-size:.92rem; }
+  .card h3 { font-size:.98rem; margin-bottom:6px; }
+  a { color:#6db3f8; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .tag { display:inline-block; font-size:.72rem; font-weight:700; border-radius:6px; padding:1px 7px; margin-left:6px; vertical-align:middle; }
+  .ok { background:rgba(52,199,123,.15); color:var(--ok); }
+  .warn { background:rgba(245,185,66,.15); color:var(--warn); }
+  .bad { background:rgba(242,109,109,.15); color:var(--bad); }
+  .est { background:rgba(245,185,66,.18); color:var(--warn); }
+  td.est, li.est { background:rgba(245,185,66,.10); }
+  table { width:100%; border-collapse:collapse; font-size:.88rem; margin:8px 0; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-size:.8rem; }
+  ul, ol { padding-left:20px; }
+  li { margin:4px 0; }
+  .dim { color:var(--dim); }
+  .num { font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .mcard { display:none; }
+  @media (max-width:560px) {
+    .dtbl { display:none; }
+    .mcard { display:block; }
+    .mrow { border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin:8px 0; font-size:.88rem; background:var(--card); }
+    .mrow .k { color:var(--dim); font-size:.78rem; }
+  }
+  .src { font-size:.82rem; color:var(--dim); word-break:break-all; }
+  .src li { margin:6px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="date">2026-09-28 · 딥리서치</p>
+<h1>Ollaya를 Mac mini M4 기본형(10C CPU/10C GPU, 16GB)에서 서비스할 때의 실용성</h1>
+
+<div class="lead">
+<b>결론 한 줄:</b> Ollaya는 LLM이 아니라 초소형 "결정 모델" 서빙 런타임이라 M4 16GB에서 핵심 모델은 <b>문제없이 돌아감</b>. 다만 Mac 공식 경로는 CPU(fp32)라 5질문 요청 기준 <span class="num">약 0.4초·초당 2~3 req(추정)</span>이고, GPU 가속은 커뮤니티 MLX/CoreML 포트로 우회해야 함. 24/7 전력·열은 합격. "GPT API처럼 래핑"은 가능하지만 생성 API가 아니라 <b>분류 API</b>이고, 호스팅 Jev 대비 정확도 열위(JevBench 30.3 vs 63.3)가 상품화의 실질 한계임.
+</div>
+
+<div class="card">
+<h3>0. 전제 정정</h3>
+<a href="https://ollaya.dev/">Ollaya</a> 자체는 모델이 아니라 Ollama식 런타임(Apache-2.0, Rust 단일 바이너리, 2026-09-23 공개)임. 돌리는 대상은 <a href="https://ollaya.dev/search">laya·decider·nli·gliclass·qwen3guard·kev·von</a> 같은 오픈 결정 모델들로, state+typed question을 <b>단일 forward pass</b>로 분류하고 텍스트를 생성하지 않음(출력 토큰 0). LLM 서빙과 부하 특성이 완전히 다름.
+</div>
+
+<h2>1. 16GB에서 돌아가는가</h2>
+<p class="dim" style="font-size:.85rem">CPU 경로는 fp32라 "다운로드 크기의 약 4배" RAM을 먹는 게 독립 실측으로 확인됨 (<a href="https://www.creativeainews.com/articles/ollaya-local-decision-models-cpu-test-2026/">creativeainews</a>).</p>
+<table class="dtbl">
+<tr><th>모델</th><th>다운로드</th><th>상주 RAM (실측)</th><th>16GB 판정</th></tr>
+<tr><td><a href="https://ollaya.dev/library/laya">laya:en / multilingual</a></td><td class="num">854 / 684 MB</td><td class="num">3.1 GB</td><td><span class="tag ok">여유</span></td></tr>
+<tr><td><a href="https://ollaya.dev/library/nli">nli</a></td><td class="num">884 MB</td><td class="num">3.7 GB</td><td><span class="tag ok">여유</span> <span class="tag warn">상용 주의¹</span></td></tr>
+<tr><td><a href="https://ollaya.dev/search">gliclass / qwen3guard</a></td><td class="num">~0.9 GB급</td><td class="num">~3~4 GB (추정)</td><td><span class="tag ok">여유</span></td></tr>
+<tr><td><a href="https://ollaya.dev/library/decider">decider:0.8b</a></td><td class="num">1.5 GB</td><td class="num">5.8 GB (피크 6.8)</td><td><span class="tag ok">단독 가능</span> <span class="tag warn">동시 상주 빠듯</span></td></tr>
+<tr><td><a href="https://ollaya.dev/library/decider">decider:2b</a></td><td class="num">3.8 GB</td><td class="num">~15 GB 필요</td><td><span class="tag bad">불가</span></td></tr>
+<tr><td><a href="https://ollaya.dev/search">kev-4b/7.9b · winnow:e4b</a></td><td class="num">4B급 이상</td><td class="num">16GB 초과</td><td><span class="tag bad">불가</span></td></tr>
+</table>
+<div class="mcard">
+<div class="mrow"><b><a href="https://ollaya.dev/library/laya">laya:en / multilingual</a></b> <span class="tag ok">여유</span><br><span class="k">다운로드 854/684MB · 상주 RAM 3.1GB (실측)</span></div>
+<div class="mrow"><b><a href="https://ollaya.dev/library/nli">nli</a></b> <span class="tag ok">여유</span> <span class="tag warn">상용 주의¹</span><br><span class="k">884MB · 3.7GB (실측)</span></div>
+<div class="mrow"><b><a href="https://ollaya.dev/search">gliclass / qwen3guard</a></b> <span class="tag ok">여유</span><br><span class="k">~0.9GB급 · 3~4GB (추정)</span></div>
+<div class="mrow"><b><a href="https://ollaya.dev/library/decider">decider:0.8b</a></b> <span class="tag ok">단독 가능</span><br><span class="k">1.5GB · 5.8GB, 피크 6.8GB (실측). laya와 동시 상주 시 9~10GB로 빠듯</span></div>
+<div class="mrow"><b><a href="https://ollaya.dev/library/decider">decider:2b</a></b> <span class="tag bad">불가</span><br><span class="k">fp32 CPU 기준 ~16GB 여유 RAM 필요 (6.9GB 여유에서 OOM 실측)</span></div>
+<div class="mrow"><b><a href="https://ollaya.dev/search">kev-4b/7.9b · winnow:e4b</a></b> <span class="tag bad">불가</span><br><span class="k">4B급 이상은 16GB 초과</span></div>
+</div>
+<div class="card">
+<b>양자화 질문에 대한 답:</b> Ollaya에는 GGUF/int8 양자화가 아직 없음(모델별 fp16/fp32 그래프만; CPU=fp32, CUDA=fp16). GGUF 결정 모델은 <a href="https://ollaya.dev/search">planned</a> 상태. Mac에서의 실질 경량 경로는 커뮤니티 포트: <a href="https://huggingface.co/aac6fef/laya-mlx">laya-mlx</a>(MLX fp16, 피크 1GiB 미만 실측)와 <a href="https://pypi.org/project/laya-apple/">laya-apple</a>(MLX GPU + Neural Engine 혼합).<br>
+<b>주의:</b> 공식 <a href="https://ollaya.dev/">플랫폼 표</a>는 macOS를 "CPU only"로 명시. 일부 2차 보도(stackness, samcodeman)는 Mac MLX/Metal 가속을 주장하나 공식 문서와 상충, 미검증임.
+</div>
+
+<h2>2. 예상 처리량</h2>
+<table class="dtbl">
+<tr><th>경로</th><th>지연</th><th>처리량</th><th>근거</th></tr>
+<tr><td>RTX 4090 (공식)</td><td class="num">laya 8~10ms / nli 20.4ms / decider:0.8b 155ms (5질문 요청)</td><td class="num">—</td><td><a href="https://ollaya.dev/">ollaya.dev</a></td></tr>
+<tr><td>CPU 실측 (Ryzen 9700X 6c)</td><td class="num">91~191ms/질문</td><td class="num">5질문 요청 2.7 req/s</td><td><a href="https://www.creativeainews.com/articles/ollaya-local-decision-models-cpu-test-2026/">creativeainews</a></td></tr>
+<tr class="est"><td><b>M4 CPU (추정)</b></td><td class="num">80~120ms/질문 · 5질문 0.35~0.5s</td><td class="num">2~3 req/s (단일질문 8~12)</td><td>위 실측+코어 구성 비교, M4 실측 없음</td></tr>
+<tr><td>MLX 포트, M3 Max / M4 Max (실측)</td><td class="num">7.4~13.4ms/질문 · M4 Max MLX forward 12.2ms</td><td class="num">GPU-only 41.9 req/s · GPU+ANE 122.5 req/s (M4 Max)</td><td><a href="https://huggingface.co/aac6fef/laya-mlx">laya-mlx</a> · <a href="https://pypi.org/project/laya-apple/">laya-apple</a></td></tr>
+<tr class="est"><td><b>MLX 포트, 기본 M4 (추정)</b></td><td class="num">25~60ms/질문</td><td class="num">10~20 req/s</td><td>Max급 GPU의 1/3~1/4 스케일링, 신뢰도 낮음</td></tr>
+</table>
+<div class="mcard">
+<div class="mrow"><b>RTX 4090 공식</b><br>laya 8~10ms, nli 20.4ms, decider:0.8b 155ms (5질문) — <a href="https://ollaya.dev/">ollaya.dev</a></div>
+<div class="mrow"><b>CPU 실측 (Ryzen 9700X)</b><br>91~191ms/질문, 5질문 2.7 req/s — <a href="https://www.creativeainews.com/articles/ollaya-local-decision-models-cpu-test-2026/">creativeainews</a></div>
+<div class="mrow" style="background:rgba(245,185,66,.08)"><b>M4 CPU (추정)</b><br>80~120ms/질문, 2~3 req/s — M4 전용 실측 없음, ±50% 오차 가능</div>
+<div class="mrow"><b>MLX 포트 M3/M4 Max (실측)</b><br>7.4~13.4ms/질문, GPU+ANE 최대 122.5 req/s — <a href="https://huggingface.co/aac6fef/laya-mlx">laya-mlx</a>, <a href="https://pypi.org/project/laya-apple/">laya-apple</a></div>
+<div class="mrow" style="background:rgba(245,185,66,.08)"><b>MLX 포트 기본 M4 (추정)</b><br>25~60ms/질문, 10~20 req/s — 신뢰도 낮음</div>
+</div>
+<div class="card">
+<b>동시성·안정성 메모:</b> 서버는 큐잉(OLLAYA_MAX_QUEUE, 503+Retry-After)으로 버스트 흡수, 모델 인스턴스당 추론은 직렬 (<a href="https://ollaya.dev/docs/api">API 문서</a>). M4 Max에서도 6분 지속 부하 시 23.5→5.3 q/s 하락 관측(Sperix Labs, <a href="https://stackness.dev/blog/how-do-you-run-system-one-decision-models-locally-ollaya-laya-mlx-and-the-runtime-slot">stackness 인용</a>). laya-mlx는 장기 상주 시 Metal 메모리 21.7GB 증가 <a href="https://www.orcarouter.ai/blog/laya-on-apple-silicon-mlx">미해결 이슈</a> — 16GB 장기 운영 시 캐시 제한 필수.
+</div>
+
+<h2>3. 트래픽 관점 (추정)</h2>
+<div class="card">
+<ul>
+<li>CPU 경로(laya:en, 5질문): <b>일일 17만~26만 req 이론 상한</b>, 헤드룸 50% 잡으면 <b>일일 약 10만 req</b> 안정권 (추정)</li>
+<li>단일질문 경량 요청: 일일 수십만~백만 근접 (추정)</li>
+<li>MLX 경로 확보 시 상한 일일 백만 단위 (추정, 신뢰도 낮음)</li>
+<li>병목 순위: ① CPU 연산(fp32) ② 상주 RAM(동시 모델 수) ③ 지속 올코어 시 스로틀링. <b>네트워크는 비병목</b>(응답 수 KB → 10 req/s도 업로드 수십 KB/s)</li>
+<li>출력 토큰이 0이라 "토큰/초"가 아니라 <b>req/s·질문/s</b>가 지표임</li>
+</ul>
+</div>
+
+<h2>4. 전력·열·24/7 — 매우 적합</h2>
+<div class="card">
+<ul>
+<li>Apple 공식: idle <b>4W</b> / max <b>65W</b> (<a href="https://support.apple.com/en-us/103253">Apple Support</a>). Geerling 실측 idle 3~4W (<a href="https://www.jeffgeerling.com/blog/2024/m4-mac-minis-efficiency-incredible/">링크</a>)</li>
+<li>24/7 실측 16일: 열 이벤트 0건, idle 37°C, 10코어 벡터 풀로드 10분에 시스템 ~29W·83.5°C·팬 27%·클럭 유지 (<a href="https://picklog.cc/blog/mac-mini-m4-cooling-stand">picklog</a>)</li>
+<li>지속 인코딩급 부하는 10~15분 후 스로틀링 소유자 보고 (<a href="https://forums.macrumors.com/threads/is-100-105-cpu-celsius-on-the-new-m4-mini-thermal-throttling.2442865/">MacRumors</a>) — 추론 서빙은 버스트성이라 해당 낮음</li>
+<li>전기요금 (추정): 평균 15~30W → 월 11~22kWh → kWh당 200원 가정 시 <b>월 약 2,200~4,400원</b> (단가 가정치)</li>
+</ul>
+</div>
+
+<h2>5. GPT API처럼 래핑해 출시 — 구성과 비용</h2>
+<div class="card">
+<h3>기술 구성</h3>
+<ul>
+<li>Ollaya는 기본 127.0.0.1:11435 바인딩 + OLLAYA_API_KEY 단일 키 → 그대로 공개 불가</li>
+<li>구성: <b>Caddy/nginx(TLS) + API 게이트웨이</b>(사용자별 키·레이트리밋·과금). LiteLLM은 /typesafe/v1/systemone 패스스루+비용추적, GoModel은 S1 엔드포인트+가상모델 지원 (<a href="https://stackness.dev/blog/how-do-you-run-system-one-decision-models-locally-ollaya-laya-mlx-and-the-runtime-slot">stackness</a>)</li>
+<li>와이어 포맷이 OpenAI chat/completions가 아니라 <b>TypeSafe /v1/systemone</b> — "GPT 호환" 표방 시 어댑터 자체 제작 필요. 어차피 생성이 아니라 분류/판정 API라 카테고리가 다름</li>
+<li>홈 호스팅 공개: Cloudflare Tunnel 등 NAT 우회 + 도메인</li>
+</ul>
+<h3 style="margin-top:12px">비용 구조 (추정)</h3>
+<ul>
+<li>하드웨어: Mac mini M4 기본형 <b>89만원</b> (미국 $599) — <a href="https://macmini.co.kr/">macmini.co.kr</a>, <a href="https://www.apple.com/kr/shop/buy-mac/mac-mini">Apple KR</a></li>
+<li>전기 월 수천원 + 도메인/터널 무료~수천원</li>
+<li>대안(호스팅 Jev): $0.042/백만 입력토큰·출력 무료, 3질문 요청 ≈ $0.000019, 100만 건 ≈ $19 (<a href="https://jevaiguide.com/jev-pricing/">jevaiguide</a>)</li>
+<li>손익분기 (추정): 일 10만 req를 Jev로 처리하면 월 ~$57 → 기기값 $650 기준 <b>약 11개월</b>. 일 1만 req면 ~9.5년. 트래픽이 클수록 자체 서빙 유리</li>
+</ul>
+<h3 style="margin-top:12px">품질·라이선스 리스크 (가장 큼)</h3>
+<ul>
+<li>정확도: JevBench <b>Laya 30.3 vs Jev 63.3</b> (842 decisions, <a href="https://www.creativeainews.com/articles/ollaya-local-decision-models-cpu-test-2026/">creativeainews 인용</a>). 기본 laya 체크포인트는 Convai 자체 벤치에서도 다수클래스 베이스라인 밑 (0.362/0.342 vs 0.461, <a href="https://www.orcarouter.ai/blog/laya-on-apple-silicon-mlx">orcarouter</a>) → 자체 데이터 파인튜닝+온도 재보정 사실상 필수</li>
+<li>컨텍스트: laya 512~1,024토큰(von 8k) vs Jev 64k. laya:en은 초과 입력을 조용히 절단</li>
+<li>라이선스: 런타임·laya·decider·gliclass Apache-2.0 → 상업적 래핑 가능. ¹nli(deberta)는 학습데이터 일부 비상업 조항 → 상용 부적합. "자체 모델"처럼 표시하면 평판 리스크</li>
+</ul>
+</div>
+
+<h2>6. 결론이 뒤집히는 조건</h2>
+<div class="card">
+<ul>
+<li>Ollaya가 Mac GPU(MLX/Metal)를 공식 지원 → 처리량 수십 배↑, 일일 상한 수십만→수백만</li>
+<li>decider:2b급 정확도 필요 → 16GB 불가, M4 Pro/Max급 상향</li>
+<li>지속 트래픽 초당 수 req 이상 → 1대로 부족</li>
+<li>입력 상태가 1,024토큰 초과 빈번 → laya 계열 부적합, von(8k) 또는 Jev</li>
+<li>Jev 가격 인하 (TypeSafe가 인하 공언) → 손익분기점 더 멀어짐</li>
+</ul>
+</div>
+
+<h2>출처</h2>
+<ul class="src">
+<li>Ollaya 공식: <a href="https://ollaya.dev/">ollaya.dev</a> · <a href="https://ollaya.dev/search">/search</a> · <a href="https://ollaya.dev/library/laya">/library/laya</a> · <a href="https://ollaya.dev/library/decider">/library/decider</a> · <a href="https://ollaya.dev/library/nli">/library/nli</a> · <a href="https://ollaya.dev/docs/faq">/docs/faq</a> · <a href="https://ollaya.dev/docs/api">/docs/api</a> · <a href="https://ollaya.dev/docs/cli">/docs/cli</a> · <a href="https://ollaya.dev/download">/download</a></li>
+<li><a href="https://github.com/ollaya-dev/ollaya">github.com/ollaya-dev/ollaya</a> (Apache-2.0)</li>
+<li>독립 CPU 실측: <a href="https://www.creativeainews.com/articles/ollaya-local-decision-models-cpu-test-2026/">creativeainews.com</a></li>
+<li>런타임 분석: <a href="https://stackness.dev/blog/how-do-you-run-system-one-decision-models-locally-ollaya-laya-mlx-and-the-runtime-slot">stackness.dev</a> · <a href="https://www.samcodeman.com/writing/ollaya-local-jev-style-decision-models">samcodeman.com</a></li>
+<li>Apple Silicon 포트: <a href="https://pypi.org/project/laya-apple/">laya-apple (PyPI)</a> · <a href="https://huggingface.co/aac6fef/laya-mlx">laya-mlx (HF)</a> · <a href="https://www.orcarouter.ai/blog/laya-on-apple-silicon-mlx">orcarouter.ai</a> · <a href="https://github.com/mizorewww/laya-mlx">github.com/mizorewww/laya-mlx</a></li>
+<li>하드웨어: <a href="https://support.apple.com/en-us/103253">Apple 전력 사양</a> · <a href="https://support.apple.com/en-us/121555">Mac mini 기술 사양 (120GB/s)</a> · <a href="https://www.jeffgeerling.com/blog/2024/m4-mac-minis-efficiency-incredible/">Jeff Geerling</a> · <a href="https://www.servethehome.com/the-apple-mac-mini-m4-sets-the-mini-computer-standard/3/">ServeTheHome</a> · <a href="https://picklog.cc/blog/mac-mini-m4-cooling-stand">picklog.cc (24/7 실측)</a> · <a href="https://forums.macrumors.com/threads/is-100-105-cpu-celsius-on-the-new-m4-mini-thermal-throttling.2442865/">MacRumors 스로틀링 스레드</a></li>
+<li>Jev 비교: <a href="https://jevaiguide.com/jev-pricing/">jevaiguide.com</a> · <a href="https://www.refix.ai/news/jev-pricing-latency-benchmarks/">refix.ai</a> · <a href="https://jevbench.xyz/">jevbench.xyz</a> · <a href="https://logicrw.github.io/awesome-jev-projects/en/projects/abdelstark/jev-benchmarks/">jev-benchmarks</a></li>
+<li>가격: <a href="https://macmini.co.kr/">macmini.co.kr</a> · <a href="https://www.apple.com/kr/shop/buy-mac/mac-mini">apple.com/kr</a> · <a href="https://www.apple.com/kr/newsroom/2024/10/apples-new-mac-mini-is-more-mighty-more-mini-and-built-for-apple-intelligence/">Apple 뉴스룸</a></li>
+<li>기타 방문: <a href="https://news.ycombinator.com/item?id=49848269">Hacker News 스레드</a> · <a href="https://ai-tldr.dev/releases/ollaya-dev-ollaya/">ai-tldr.dev</a> · <a href="https://runtimewire.com/article/ollaya-local-decision-model-runtime">runtimewire.com</a> · <a href="https://logicandlayers.com/ollaya-decision-models/">logicandlayers.com</a> · <a href="https://vuink.com/post/ollaya-d-ddev">vuink.com</a> · <a href="https://siliconscore.com/chips/m4-16-gb/">siliconscore.com (M4 16GB LLM 벤치)</a> · <a href="https://www.reddit.com/r/LocalLLaMA/comments/1gnefmi/mac_mini_m4_16gb_test_results/">r/LocalLLaMA M4 mini 테스트</a> · <a href="https://modelfit.io/blog/run-35b-llm-mac-mini-m4-16gb-mmap/">modelfit.io</a> · <a href="https://picklog.cc/blog/local-llm-mac-mini-16gb">picklog.cc (16GB 로컬 LLM)</a></li>
+</ul>
+<p class="src" style="margin-top:10px">참고: cephalochromoscope.net의 laya-mlx 벤치 복사본은 표가 깨진 스크래퍼 페이지라 출처에서 제외함.</p>
+</div>
+</body>
+</html>
